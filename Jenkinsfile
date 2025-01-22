@@ -3,44 +3,50 @@ pipeline {
     tools {
         nodejs 'node.js'
     }
-
+    environment {
+        IMAGE_NAME = 'moazmohamed/weather-app:lts'
+        
+    }
     stages {
         stage('Install Dependencies') {
             steps {
+                echo 'Installing Dependencies...'
                 sh 'npm install'
             }
         }
-        stage('Run Test') {
+        stage('Run Tests') {
             steps {
+                echo 'Running Tests...'
                 sh 'npm test'
             }
         }
-        stage('Docker Build') {
+        stage('Build Docker Image') {
             steps {
+                echo 'Building Docker Image...'
                 sh 'docker build -t weather-app .'
             }
         }
-        stage('Docker Run') {
-            steps {
-                sh 'docker run -d -p 3000:3000 --name weather weather-app'
-            }
-        }
-        stage('Docker Push') {
+        stage('Push to Dockerhub') {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
-                        sh 'docker login -u $USERNAME -p $PASSWORD'
-                        sh 'docker tag weather-app $USERNAME/weather-app:2.0'
-                        sh 'docker push $USERNAME/weather-app:2.0'
+                        sh "docker login -u $USERNAME -p $PASSWORD"
+                        sh "docker tag weather-app ${IMAGE_NAME}"
+                        sh "docker push ${IMAGE_NAME}"
                     }
                 }
             }
         }
-    }
-    post {
-        always {
-            sh 'docker stop weather'
-            sh 'docker rm weather'
+        stage('Deploy to Azure Server') {
+            steps {
+                script {
+                def dockerCommand = 'docker run -d -p 3000:3000 --name weather'
+                    sshagent(['docker-server-key']) {
+                        sh "ssh -o stricthostkeychecking=no azureuser@4.211.131.159 docker run -d -p 3000:3000 ${dockerCommand} ${IMAGE_NAME}"   
+
+                    }
+                }
+            }
         }
     }
 }
